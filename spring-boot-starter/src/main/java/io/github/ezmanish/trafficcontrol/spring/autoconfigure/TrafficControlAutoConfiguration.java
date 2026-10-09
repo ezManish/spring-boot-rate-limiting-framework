@@ -20,7 +20,6 @@ import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -71,29 +70,106 @@ public class TrafficControlAutoConfiguration {
   }
 
   @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnProperty(prefix = "trafficcontrol", name = "store", havingValue = "redis")
+  @ConditionalOnClass(name = "io.lettuce.core.RedisClient")
+  public io.lettuce.core.RedisClient trafficControlRedisClient(
+      TrafficControlProperties properties) {
+    String redisUrl =
+        properties.getRedis() != null && properties.getRedis().getUrl() != null
+            ? properties.getRedis().getUrl()
+            : "redis://localhost:6379";
+    return io.lettuce.core.RedisClient.create(redisUrl);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnProperty(prefix = "trafficcontrol", name = "store", havingValue = "redis")
+  @ConditionalOnClass(name = "io.lettuce.core.RedisClient")
+  public io.lettuce.core.api.StatefulRedisConnection<String, String> trafficControlRedisConnection(
+      io.lettuce.core.RedisClient client) {
+    return client.connect();
+  }
+
+  @Bean
   @ConditionalOnMissingBean(RateLimitStore.class)
   @ConditionalOnProperty(prefix = "trafficcontrol", name = "store", havingValue = "redis")
   @ConditionalOnClass(name = "io.github.ezmanish.trafficcontrol.store.redis.RedisRateLimitStore")
   public RateLimitStore redisRateLimitStore(
-      TrafficControlProperties properties,
-      ObjectProvider<io.lettuce.core.api.sync.RedisCommands<String, String>> redisCommandsProvider,
-      ObjectProvider<io.lettuce.core.RedisClient> redisClientProvider) {
-    io.lettuce.core.api.sync.RedisCommands<String, String> existingCommands =
-        redisCommandsProvider.getIfAvailable();
-    if (existingCommands != null) {
-      return new io.github.ezmanish.trafficcontrol.store.redis.RedisRateLimitStore(
-          existingCommands);
-    }
-    io.lettuce.core.RedisClient client = redisClientProvider.getIfAvailable();
-    if (client == null) {
-      String redisUrl =
-          properties.getRedis() != null && properties.getRedis().getUrl() != null
-              ? properties.getRedis().getUrl()
-              : "redis://localhost:6379";
-      client = io.lettuce.core.RedisClient.create(redisUrl);
-    }
-    io.lettuce.core.api.StatefulRedisConnection<String, String> connection = client.connect();
+      io.lettuce.core.api.StatefulRedisConnection<String, String> connection) {
     return new io.github.ezmanish.trafficcontrol.store.redis.RedisRateLimitStore(connection.sync());
+  }
+
+  @Bean
+  @ConditionalOnMissingBean(
+      io.github.ezmanish.trafficcontrol.spring.web.policy.update.PolicyUpdateBroadcaster.class)
+  @ConditionalOnProperty(prefix = "trafficcontrol", name = "store", havingValue = "redis")
+  @ConditionalOnClass(name = "io.lettuce.core.RedisClient")
+  public io.github.ezmanish.trafficcontrol.spring.web.policy.update.PolicyUpdateBroadcaster
+      redisPolicyUpdateBroadcaster(
+          io.lettuce.core.api.StatefulRedisConnection<String, String> connection,
+          Optional<ObjectMapper> objectMapper) {
+    return new io.github.ezmanish.trafficcontrol.spring.web.policy.update
+        .RedisPolicyUpdateBroadcaster(connection.sync(), objectMapper.orElse(null));
+  }
+
+  @Bean(initMethod = "start", destroyMethod = "stop")
+  @ConditionalOnMissingBean
+  @ConditionalOnProperty(prefix = "trafficcontrol", name = "store", havingValue = "redis")
+  @ConditionalOnClass(name = "io.lettuce.core.RedisClient")
+  public io.github.ezmanish.trafficcontrol.spring.web.policy.update.PolicyPollScheduler
+      redisPolicyPollScheduler(
+          TrafficControlProperties properties,
+          PolicyRegistry policyRegistry,
+          io.lettuce.core.RedisClient client,
+          io.lettuce.core.api.StatefulRedisConnection<String, String> connection,
+          PolicyConfigValidator validator,
+          Optional<ObjectMapper> objectMapper) {
+    io.github.ezmanish.trafficcontrol.spring.web.policy.update.RedisPolicyUpdateSubscriber
+        subscriber =
+            new io.github.ezmanish.trafficcontrol.spring.web.policy.update
+                .RedisPolicyUpdateSubscriber(
+                policyRegistry, connection.sync(), validator, objectMapper.orElse(null));
+    try {
+      io.lettuce.core.pubsub.StatefulRedisPubSubConnection<String, String> pubSubConn =
+          client.connectPubSub();
+      subscriber.subscribe(pubSubConn);
+    } catch (Exception e) {
+      log.warn(
+          "Could not connect to Redis Pub/Sub for live policy updates (relying on poller): {}",
+          e.getMessage());
+    }
+    java.time.Duration interval =
+        properties.getAdmin() != null && properties.getAdmin().getPollInterval() != null
+            ? properties.getAdmin().getPollInterval()
+            : java.time.Duration.ofSeconds(30);
+    return new io.github.ezmanish.trafficcontrol.spring.web.policy.update.PolicyPollScheduler(
+        subscriber, interval);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  public io.github.ezmanish.trafficcontrol.spring.web.admin.PolicyAuditLog
+      trafficControlPolicyAuditLog() {
+    return new io.github.ezmanish.trafficcontrol.spring.web.admin.PolicyAuditLog();
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnProperty(prefix = "trafficcontrol.admin", name = "enabled", havingValue = "true")
+  @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+  public io.github.ezmanish.trafficcontrol.spring.web.admin.PolicyAdminController
+      trafficControlPolicyAdminController(
+          PolicyRegistry policyRegistry,
+          PolicyConfigValidator validator,
+          io.github.ezmanish.trafficcontrol.spring.web.admin.PolicyAuditLog auditLog,
+          Optional<
+                  io.github.ezmanish.trafficcontrol.spring.web.policy.update
+                      .PolicyUpdateBroadcaster>
+              broadcaster,
+          Optional<ObjectMapper> objectMapper) {
+    return new io.github.ezmanish.trafficcontrol.spring.web.admin.PolicyAdminController(
+        policyRegistry, validator, auditLog, broadcaster, objectMapper.orElse(null));
   }
 
   @Bean

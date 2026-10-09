@@ -151,6 +151,7 @@ public class TrafficControlProperties {
     private boolean enabled = false;
     private String basePath = "/trafficcontrol/admin";
     private String role = "TRAFFICCONTROL_ADMIN";
+    private java.time.Duration pollInterval = java.time.Duration.ofSeconds(30);
 
     public boolean isEnabled() {
       return enabled;
@@ -174,6 +175,14 @@ public class TrafficControlProperties {
 
     public void setRole(String role) {
       this.role = role;
+    }
+
+    public java.time.Duration getPollInterval() {
+      return pollInterval;
+    }
+
+    public void setPollInterval(java.time.Duration pollInterval) {
+      this.pollInterval = pollInterval;
     }
   }
 
