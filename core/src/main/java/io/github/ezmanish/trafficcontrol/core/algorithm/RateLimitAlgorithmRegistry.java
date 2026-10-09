@@ -13,6 +13,8 @@ public class RateLimitAlgorithmRegistry {
   public RateLimitAlgorithmRegistry() {
     register(new TokenBucketAlgorithm());
     register(new FixedWindowAlgorithm());
+    register(new GcraAlgorithm());
+    register(new SlidingWindowCounterAlgorithm());
   }
 
   public void register(RateLimitAlgorithm algorithm) {

@@ -16,7 +16,11 @@ import org.junit.jupiter.params.provider.MethodSource;
 class AlgorithmConformanceTest {
 
   static Stream<RateLimitAlgorithm> algorithms() {
-    return Stream.of(new TokenBucketAlgorithm(), new FixedWindowAlgorithm());
+    return Stream.of(
+        new TokenBucketAlgorithm(),
+        new FixedWindowAlgorithm(),
+        new GcraAlgorithm(),
+        new SlidingWindowCounterAlgorithm());
   }
 
   @ParameterizedTest
@@ -69,8 +73,8 @@ class AlgorithmConformanceTest {
     // Verify exhausted
     assertThat(algorithm.evaluate(now, rule, 1, state).allowed()).isFalse();
 
-    // Advance beyond window
-    now += window.toMillis() + 500L;
+    // Advance beyond window (2 windows for sliding counter to roll off previous window completely)
+    now += 2 * window.toMillis() + 500L;
 
     EvaluationResult refilled = algorithm.evaluate(now, rule, 1, state);
     assertThat(refilled.allowed()).isTrue();
