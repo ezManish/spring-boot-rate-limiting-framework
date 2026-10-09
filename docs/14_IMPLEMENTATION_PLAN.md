@@ -38,12 +38,12 @@ Absorbs Lua/Cluster debugging.
 YAML policies, path rules, plans, startup validation; concurrency acquired in the same Lua script; live updates (snapshot, pub/sub, poll fallback, atomic swap); minimal secured admin API + audit.
 **Exit:** TC-014..016, 050..054, 070..075; E6, E7 first results.
 
-### Phase 5 (D71–91)
-Micrometer binder, logs, health indicator, dashboards (cuttable); adaptive controller with kill switch (cuttable refinements); sliding window log local + Lua (cuttable).
-**Exit:** TC-080..084, 090..093, 115.
+### Phase 5 (D71–91) [COMPLETED]
+Micrometer binder, logs, health indicator, dashboards; adaptive controller with kill switch; sliding window log local + Lua.
+**Exit:** TC-080..084, 090..093, 115. All implemented and verified.
 
-### Phase 6 (D92–110)
-Run E1–E9, charts, security tests SEC-01..05, docs, demo video, v1.0 tag, final report data. Remaining buffer (~1–2 weeks) used before submission.
+### Phase 6 (D92–110) [COMPLETED]
+Run E1–E9, benchmarks (JMH), security tests SEC-01..05, demo application showcase, docs, evaluation report (24_EVALUATION_REPORT.md). v1.0 Release Candidate ready.
 
 ## Team Split (3 people; with 2, merge B+C and cut earlier)
 | Role | Primary | Secondary |

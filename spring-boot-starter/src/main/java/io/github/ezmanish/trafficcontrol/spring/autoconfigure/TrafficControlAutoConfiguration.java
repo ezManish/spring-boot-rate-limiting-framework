@@ -30,6 +30,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -70,82 +71,81 @@ public class TrafficControlAutoConfiguration {
     return new LocalRateLimitStore(100_000, java.time.Duration.ofMinutes(10), registry, clock);
   }
 
-  @Bean
-  @ConditionalOnMissingBean
+  @Configuration(proxyBeanMethods = false)
   @ConditionalOnProperty(prefix = "trafficcontrol", name = "store", havingValue = "redis")
   @ConditionalOnClass(name = "io.lettuce.core.RedisClient")
-  public io.lettuce.core.RedisClient trafficControlRedisClient(
-      TrafficControlProperties properties) {
-    String redisUrl =
-        properties.getRedis() != null && properties.getRedis().getUrl() != null
-            ? properties.getRedis().getUrl()
-            : "redis://localhost:6379";
-    return io.lettuce.core.RedisClient.create(redisUrl);
-  }
+  static class RedisStoreConfiguration {
 
-  @Bean
-  @ConditionalOnMissingBean
-  @ConditionalOnProperty(prefix = "trafficcontrol", name = "store", havingValue = "redis")
-  @ConditionalOnClass(name = "io.lettuce.core.RedisClient")
-  public io.lettuce.core.api.StatefulRedisConnection<String, String> trafficControlRedisConnection(
-      io.lettuce.core.RedisClient client) {
-    return client.connect();
-  }
-
-  @Bean
-  @ConditionalOnMissingBean(RateLimitStore.class)
-  @ConditionalOnProperty(prefix = "trafficcontrol", name = "store", havingValue = "redis")
-  @ConditionalOnClass(name = "io.github.ezmanish.trafficcontrol.store.redis.RedisRateLimitStore")
-  public RateLimitStore redisRateLimitStore(
-      io.lettuce.core.api.StatefulRedisConnection<String, String> connection) {
-    return new io.github.ezmanish.trafficcontrol.store.redis.RedisRateLimitStore(connection.sync());
-  }
-
-  @Bean
-  @ConditionalOnMissingBean(
-      io.github.ezmanish.trafficcontrol.spring.web.policy.update.PolicyUpdateBroadcaster.class)
-  @ConditionalOnProperty(prefix = "trafficcontrol", name = "store", havingValue = "redis")
-  @ConditionalOnClass(name = "io.lettuce.core.RedisClient")
-  public io.github.ezmanish.trafficcontrol.spring.web.policy.update.PolicyUpdateBroadcaster
-      redisPolicyUpdateBroadcaster(
-          io.lettuce.core.api.StatefulRedisConnection<String, String> connection,
-          Optional<ObjectMapper> objectMapper) {
-    return new io.github.ezmanish.trafficcontrol.spring.web.policy.update
-        .RedisPolicyUpdateBroadcaster(connection.sync(), objectMapper.orElse(null));
-  }
-
-  @Bean(initMethod = "start", destroyMethod = "stop")
-  @ConditionalOnMissingBean
-  @ConditionalOnProperty(prefix = "trafficcontrol", name = "store", havingValue = "redis")
-  @ConditionalOnClass(name = "io.lettuce.core.RedisClient")
-  public io.github.ezmanish.trafficcontrol.spring.web.policy.update.PolicyPollScheduler
-      redisPolicyPollScheduler(
-          TrafficControlProperties properties,
-          PolicyRegistry policyRegistry,
-          io.lettuce.core.RedisClient client,
-          io.lettuce.core.api.StatefulRedisConnection<String, String> connection,
-          PolicyConfigValidator validator,
-          Optional<ObjectMapper> objectMapper) {
-    io.github.ezmanish.trafficcontrol.spring.web.policy.update.RedisPolicyUpdateSubscriber
-        subscriber =
-            new io.github.ezmanish.trafficcontrol.spring.web.policy.update
-                .RedisPolicyUpdateSubscriber(
-                policyRegistry, connection.sync(), validator, objectMapper.orElse(null));
-    try {
-      io.lettuce.core.pubsub.StatefulRedisPubSubConnection<String, String> pubSubConn =
-          client.connectPubSub();
-      subscriber.subscribe(pubSubConn);
-    } catch (Exception e) {
-      log.warn(
-          "Could not connect to Redis Pub/Sub for live policy updates (relying on poller): {}",
-          e.getMessage());
+    @Bean
+    @ConditionalOnMissingBean
+    public io.lettuce.core.RedisClient trafficControlRedisClient(
+        TrafficControlProperties properties) {
+      String redisUrl =
+          properties.getRedis() != null && properties.getRedis().getUrl() != null
+              ? properties.getRedis().getUrl()
+              : "redis://localhost:6379";
+      return io.lettuce.core.RedisClient.create(redisUrl);
     }
-    java.time.Duration interval =
-        properties.getAdmin() != null && properties.getAdmin().getPollInterval() != null
-            ? properties.getAdmin().getPollInterval()
-            : java.time.Duration.ofSeconds(30);
-    return new io.github.ezmanish.trafficcontrol.spring.web.policy.update.PolicyPollScheduler(
-        subscriber, interval);
+
+    @Bean
+    @ConditionalOnMissingBean
+    public io.lettuce.core.api.StatefulRedisConnection<String, String>
+        trafficControlRedisConnection(io.lettuce.core.RedisClient client) {
+      return client.connect();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(RateLimitStore.class)
+    @ConditionalOnClass(name = "io.github.ezmanish.trafficcontrol.store.redis.RedisRateLimitStore")
+    public RateLimitStore redisRateLimitStore(
+        io.lettuce.core.api.StatefulRedisConnection<String, String> connection) {
+      return new io.github.ezmanish.trafficcontrol.store.redis.RedisRateLimitStore(
+          connection.sync());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(
+        io.github.ezmanish.trafficcontrol.spring.web.policy.update.PolicyUpdateBroadcaster.class)
+    public io.github.ezmanish.trafficcontrol.spring.web.policy.update.PolicyUpdateBroadcaster
+        redisPolicyUpdateBroadcaster(
+            io.lettuce.core.api.StatefulRedisConnection<String, String> connection,
+            Optional<ObjectMapper> objectMapper) {
+      return new io.github.ezmanish.trafficcontrol.spring.web.policy.update
+          .RedisPolicyUpdateBroadcaster(connection.sync(), objectMapper.orElse(null));
+    }
+
+    @Bean(initMethod = "start", destroyMethod = "stop")
+    @ConditionalOnMissingBean
+    public io.github.ezmanish.trafficcontrol.spring.web.policy.update.PolicyPollScheduler
+        redisPolicyPollScheduler(
+            TrafficControlProperties properties,
+            PolicyRegistry policyRegistry,
+            io.lettuce.core.RedisClient client,
+            io.lettuce.core.api.StatefulRedisConnection<String, String> connection,
+            PolicyConfigValidator validator,
+            Optional<ObjectMapper> objectMapper) {
+      io.github.ezmanish.trafficcontrol.spring.web.policy.update.RedisPolicyUpdateSubscriber
+          subscriber =
+              new io.github.ezmanish.trafficcontrol.spring.web.policy.update
+                  .RedisPolicyUpdateSubscriber(
+                  policyRegistry, connection.sync(), validator, objectMapper.orElse(null));
+      try {
+        io.lettuce.core.pubsub.StatefulRedisPubSubConnection<String, String> pubSubConn =
+            client.connectPubSub();
+        subscriber.subscribe(pubSubConn);
+      } catch (Exception e) {
+        LoggerFactory.getLogger(RedisStoreConfiguration.class)
+            .warn(
+                "Could not connect to Redis Pub/Sub for live policy updates (relying on poller): {}",
+                e.getMessage());
+      }
+      java.time.Duration interval =
+          properties.getAdmin() != null && properties.getAdmin().getPollInterval() != null
+              ? properties.getAdmin().getPollInterval()
+              : java.time.Duration.ofSeconds(30);
+      return new io.github.ezmanish.trafficcontrol.spring.web.policy.update.PolicyPollScheduler(
+          subscriber, interval);
+    }
   }
 
   @Bean
@@ -185,32 +185,34 @@ public class TrafficControlAutoConfiguration {
         properties, policyRegistry, rateLimitStore);
   }
 
-  @Bean
-  @ConditionalOnMissingBean
+  @Configuration(proxyBeanMethods = false)
   @ConditionalOnClass(name = "io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics")
-  public io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics trafficControlMetrics(
-      ObjectProvider<io.micrometer.core.instrument.MeterRegistry> meterRegistryProvider) {
-    io.micrometer.core.instrument.MeterRegistry registry =
-        meterRegistryProvider.getIfAvailable(
-            io.micrometer.core.instrument.simple.SimpleMeterRegistry::new);
-    return new io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics(registry);
-  }
+  static class MetricsConfiguration {
 
-  @Bean
-  @ConditionalOnMissingBean
-  @ConditionalOnClass(name = "io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics")
-  public io.github.ezmanish.trafficcontrol.metrics.MetricsDecisionListener
-      trafficControlMetricsListener(
-          io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics metrics) {
-    return new io.github.ezmanish.trafficcontrol.metrics.MetricsDecisionListener(metrics);
-  }
+    @Bean
+    @ConditionalOnMissingBean
+    public io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics trafficControlMetrics(
+        ObjectProvider<io.micrometer.core.instrument.MeterRegistry> meterRegistryProvider) {
+      io.micrometer.core.instrument.MeterRegistry registry =
+          meterRegistryProvider.getIfAvailable(
+              io.micrometer.core.instrument.simple.SimpleMeterRegistry::new);
+      return new io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics(registry);
+    }
 
-  @Bean
-  @ConditionalOnMissingBean
-  @ConditionalOnClass(name = "io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics")
-  public io.github.ezmanish.trafficcontrol.metrics.DecisionLoggerListener
-      trafficControlDecisionLoggerListener() {
-    return new io.github.ezmanish.trafficcontrol.metrics.DecisionLoggerListener();
+    @Bean
+    @ConditionalOnMissingBean
+    public io.github.ezmanish.trafficcontrol.metrics.MetricsDecisionListener
+        trafficControlMetricsListener(
+            io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics metrics) {
+      return new io.github.ezmanish.trafficcontrol.metrics.MetricsDecisionListener(metrics);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public io.github.ezmanish.trafficcontrol.metrics.DecisionLoggerListener
+        trafficControlDecisionLoggerListener() {
+      return new io.github.ezmanish.trafficcontrol.metrics.DecisionLoggerListener();
+    }
   }
 
   @Bean

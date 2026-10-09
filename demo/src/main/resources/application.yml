@@ -1,0 +1,39 @@
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,metrics"
+  endpoint:
+    health:
+      show-details: always
+
+trafficcontrol:
+  enabled: true
+  store: local
+  headers:
+    enabled: true
+    style: BOTH
+  policies:
+    public-api:
+      key: IP
+      rules:
+        - id: r1
+          requests: 5
+          window: 1m
+    login:
+      key: IP
+      rules:
+        - id: login-ip
+          requests: 3
+          window: 1m
+    search:
+      key: IP
+      algorithm: GCRA
+      rules:
+        - id: search-burst
+          requests: 10
+          window: 1m
+          burst: 15
