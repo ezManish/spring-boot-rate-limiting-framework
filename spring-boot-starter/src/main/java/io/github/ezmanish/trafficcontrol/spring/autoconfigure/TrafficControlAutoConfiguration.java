@@ -20,8 +20,10 @@ import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -66,6 +68,32 @@ public class TrafficControlAutoConfiguration {
       matchIfMissing = true)
   public RateLimitStore localRateLimitStore(Clock clock, RateLimitAlgorithmRegistry registry) {
     return new LocalRateLimitStore(100_000, java.time.Duration.ofMinutes(10), registry, clock);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean(RateLimitStore.class)
+  @ConditionalOnProperty(prefix = "trafficcontrol", name = "store", havingValue = "redis")
+  @ConditionalOnClass(name = "io.github.ezmanish.trafficcontrol.store.redis.RedisRateLimitStore")
+  public RateLimitStore redisRateLimitStore(
+      TrafficControlProperties properties,
+      ObjectProvider<io.lettuce.core.api.sync.RedisCommands<String, String>> redisCommandsProvider,
+      ObjectProvider<io.lettuce.core.RedisClient> redisClientProvider) {
+    io.lettuce.core.api.sync.RedisCommands<String, String> existingCommands =
+        redisCommandsProvider.getIfAvailable();
+    if (existingCommands != null) {
+      return new io.github.ezmanish.trafficcontrol.store.redis.RedisRateLimitStore(
+          existingCommands);
+    }
+    io.lettuce.core.RedisClient client = redisClientProvider.getIfAvailable();
+    if (client == null) {
+      String redisUrl =
+          properties.getRedis() != null && properties.getRedis().getUrl() != null
+              ? properties.getRedis().getUrl()
+              : "redis://localhost:6379";
+      client = io.lettuce.core.RedisClient.create(redisUrl);
+    }
+    io.lettuce.core.api.StatefulRedisConnection<String, String> connection = client.connect();
+    return new io.github.ezmanish.trafficcontrol.store.redis.RedisRateLimitStore(connection.sync());
   }
 
   @Bean
