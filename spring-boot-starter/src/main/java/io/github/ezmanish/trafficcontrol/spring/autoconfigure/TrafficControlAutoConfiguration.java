@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -170,6 +171,46 @@ public class TrafficControlAutoConfiguration {
           Optional<ObjectMapper> objectMapper) {
     return new io.github.ezmanish.trafficcontrol.spring.web.admin.PolicyAdminController(
         policyRegistry, validator, auditLog, broadcaster, objectMapper.orElse(null));
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnClass(name = "org.springframework.boot.actuate.health.HealthIndicator")
+  public io.github.ezmanish.trafficcontrol.spring.actuator.RateLimitHealthIndicator
+      trafficControlHealthIndicator(
+          TrafficControlProperties properties,
+          PolicyRegistry policyRegistry,
+          RateLimitStore rateLimitStore) {
+    return new io.github.ezmanish.trafficcontrol.spring.actuator.RateLimitHealthIndicator(
+        properties, policyRegistry, rateLimitStore);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnClass(name = "io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics")
+  public io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics trafficControlMetrics(
+      ObjectProvider<io.micrometer.core.instrument.MeterRegistry> meterRegistryProvider) {
+    io.micrometer.core.instrument.MeterRegistry registry =
+        meterRegistryProvider.getIfAvailable(
+            io.micrometer.core.instrument.simple.SimpleMeterRegistry::new);
+    return new io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics(registry);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnClass(name = "io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics")
+  public io.github.ezmanish.trafficcontrol.metrics.MetricsDecisionListener
+      trafficControlMetricsListener(
+          io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics metrics) {
+    return new io.github.ezmanish.trafficcontrol.metrics.MetricsDecisionListener(metrics);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnClass(name = "io.github.ezmanish.trafficcontrol.metrics.TrafficControlMetrics")
+  public io.github.ezmanish.trafficcontrol.metrics.DecisionLoggerListener
+      trafficControlDecisionLoggerListener() {
+    return new io.github.ezmanish.trafficcontrol.metrics.DecisionLoggerListener();
   }
 
   @Bean

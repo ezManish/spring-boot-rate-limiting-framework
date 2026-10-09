@@ -15,6 +15,7 @@ public class RateLimitAlgorithmRegistry {
     register(new FixedWindowAlgorithm());
     register(new GcraAlgorithm());
     register(new SlidingWindowCounterAlgorithm());
+    register(new SlidingWindowLogAlgorithm());
   }
 
   public void register(RateLimitAlgorithm algorithm) {
